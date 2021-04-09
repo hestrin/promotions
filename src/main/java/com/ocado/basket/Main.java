@@ -1,38 +1,52 @@
 package com.ocado.basket;
 
-import org.junit.Assert;
-
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 
 class Bot {
-    private Optional<AuditLog> l = Optional.empty();
-    String message;
-    public int throttleCounter;
+    private AuditLog log;
+    private int counter = 0;
     private int x, y;
 
     public Bot(boolean shouldLog, Database database) {
-        if (shouldLog) {
-            l = Optional.of(new AuditLog(database));
-        }
+        this.log = shouldLog ? new AuditLog(database) : null;
     }
 
+    private boolean isLoggingEnabled(){
+        return log != null;
+    }
     public void setLocation(int x, int y) throws Exception {
-        if (x < 0 || y < 0) {
+        if (isValidLocation(x, y)) {
             throw new Exception("Invalid location");
         }
         this.x = x;
         this.y = y;
-        reportStatus();
+
+        updateAuditLog();
     }
 
-    private void reportStatus() {
-        if (throttleCounter % 2 == 0) {
-            message = String.format("%s: (%d, %d)", "Bot position", x, y);
-            l.ifPresent(l -> l.recordEvent(message));
+    private boolean isValidLocation(int x, int y) {
+        return x < 0 || y < 0;
+    }
+
+    private void updateAuditLog() {
+        if (isLoggingEnabled()) {
+            addCurrentPositionToLog();
+            incrementCounter();
         }
-        throttleCounter++;
+    }
+
+    private void incrementCounter() {
+        counter++;
+    }
+
+    private void addCurrentPositionToLog() {
+        if (counter % 2 == 0)
+            log.recordEvent(String.format("%s: (%d, %d)", "Bot position", x, y));
+    }
+
+    public List<String> getMessages() {
+        return isLoggingEnabled() ? log.getMessages() : List.of("Logging disabled");
     }
 }
 
@@ -44,6 +58,10 @@ class AuditLog {
         this.db = database;
     }
 
+    public List<String> getMessages() {
+        return List.copyOf(pendingMessages);
+    }
+
     public void recordEvent(String message) {
         synchronized (pendingMessages) {
             pendingMessages.add(message);
@@ -51,32 +69,24 @@ class AuditLog {
     }
 
     public void flush() {
-        synchronized (db) {
-            pendingMessages.forEach(
-                    m -> db.execute("insert into messages(message) values(" + m + ")")
-            );
+        synchronized (pendingMessages) {
+            pendingMessages.forEach(m -> db.execute("insert into messages(message) values(" + m + ")"));
+            pendingMessages.clear();
         }
-        pendingMessages.clear();
     }
 }
 
 public class Main {
     public static void main(String[] args) throws Exception {
-
         Database db = new Database.OracleJdbcDriver("admin", "123password");
-        Bot bot = new Bot(false, db);
+        Bot bot = new Bot(true, db);
 
-
-        bot.throttleCounter = 2;
         bot.setLocation(1, 2);
         bot.setLocation(3, 4);
-        System.out.println(bot.message);
-//        Assert.assertEquals("Bot position" + ": (1, 2)", bot.message);
+        System.out.println(bot.getMessages());
 
-        bot.throttleCounter = 2;
         bot.setLocation(5, 6);
-        System.out.println(bot.message);
-//        Assert.assertEquals("Bot position" + ": (5, 6)", bot.message);
+        System.out.println(bot.getMessages());
     }
 }
 
