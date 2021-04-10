@@ -147,6 +147,7 @@ public class Main {
         System.out.println(missingOne.getMessages());
 
         Bot secondOne = Bot.builder().name("Second one").logPosition(true).startingPosition(new Position(1, 1)).build();
+        secondOne.moveTo(new Position());
         System.out.println(secondOne.getMessages());
     }
 }
